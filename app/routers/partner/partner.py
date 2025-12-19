@@ -77,8 +77,8 @@ def get_partner_of_resort(
 
 @router.get("/partner/bookings/schedule")
 def get_partner_booking_schedule(
-    start: datetime | None = Query(None, description="Ngày bắt đầu hiển thị lịch (YYYY-MM-DD)"),
-    end: datetime | None = Query(None, description="Ngày kết thúc hiển thị lịch (YYYY-MM-DD)"),
+    start: date | None = Query(None, description="Ngày bắt đầu hiển thị lịch (YYYY-MM-DD)"),
+    end: date | None = Query(None, description="Ngày kết thúc hiển thị lịch (YYYY-MM-DD)"),
     resort_id: int | None = Query(None, description="Lọc theo resort cụ thể"),
     partner: Partner = Depends(get_current_partner),
     db: AsyncSession = Depends(get_db)
@@ -94,8 +94,12 @@ def get_partner_booking_schedule(
         today = datetime.utcnow().date()
         start_of_week = today - timedelta(days=today.weekday())  # Thứ 2
         end_of_week = start_of_week + timedelta(days=6)          # Chủ nhật
-        start = datetime.combine(start_of_week, datetime.min.time())
-        end = datetime.combine(end_of_week, datetime.max.time())
+        start = start_of_week
+        end = end_of_week
+    
+    # Convert date to datetime for query
+    start_dt = datetime.combine(start, datetime.min.time())
+    end_dt = datetime.combine(end, datetime.max.time())
 
     query = (
         select(
@@ -111,8 +115,8 @@ def get_partner_booking_schedule(
         .join(Resort, Resort.id == RoomType.resort_id)
         .where(Resort.partner_id == partner_id)
         .where(
-            BookingTimeSlot.finished_time >= start,
-            BookingTimeSlot.started_time <= end
+            BookingTimeSlot.finished_time >= start_dt,
+            BookingTimeSlot.started_time <= end_dt
         )
         .order_by(BookingTimeSlot.started_time.asc())
     )
