@@ -3,13 +3,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from datetime import datetime, date
 from app.models import Partner
+from app.models.account import Account
 from app.models.withdraw import Withdraw
 from app.database import get_db
+from app.dependencies.auth import get_current_admin
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin Withdraw Management"])
 
 @router.get("/withdraws")
 def get_withdraw_requests(
+    current_admin: Account = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, le=100),
@@ -24,7 +27,7 @@ def get_withdraw_requests(
 
     filters = []
     if status:
-        filters.append(Withdraw.status == status)
+        filters.append(func.upper(Withdraw.status) == status.upper())
     if partner_id:
         filters.append(Withdraw.partner_id == partner_id)
     if start_date:
@@ -72,35 +75,47 @@ def get_withdraw_requests(
     }
 
 
-@router.post("/withdraws")
-def approve_withdraw_request(
-    id: int = Query(..., description="ID của yêu cầu rút tiền"),
+@router.put("/withdraws/{id}")
+def process_withdraw_request(
+    id: int,
+    action: str = Query(..., description="Hành động: APPROVE hoặc REJECT"),
+    current_admin: Account = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
-    # 1️⃣ Tìm yêu cầu rút tiền
+    """Duyệt hoặc từ chối yêu cầu rút tiền"""
+    action = action.upper()
+    if action not in ["APPROVE", "REJECT"]:
+        raise HTTPException(status_code=400, detail="Action must be APPROVE or REJECT")
+
     result = db.execute(select(Withdraw).where(Withdraw.id == id))
     withdraw = result.scalar_one_or_none()
 
     if not withdraw:
         raise HTTPException(status_code=404, detail="Withdraw request not found")
 
-    # 2️⃣ Kiểm tra trạng thái
-    if withdraw.status != "pending":
-        raise HTTPException(status_code=400, detail=f"Cannot approve withdraw in status '{withdraw.status}'")
+    if withdraw.status.upper() != "PENDING":
+        raise HTTPException(status_code=400, detail=f"Cannot process withdraw in status '{withdraw.status}'")
 
-    # 3️⃣ Cập nhật trạng thái
-    withdraw.status = "approved"
+    if action == "APPROVE":
+        withdraw.status = "APPROVED"
+        message = "Withdraw request approved successfully"
+    else:
+        # Hoàn tiền về balance của partner
+        partner_result = db.execute(select(Partner).where(Partner.id == withdraw.partner_id))
+        partner = partner_result.scalar_one_or_none()
+        if partner:
+            partner.balance = (partner.balance or 0) + withdraw.transaction_amount
+            db.add(partner)
+        withdraw.status = "REJECTED"
+        message = "Withdraw request rejected, amount refunded to partner balance"
+
     withdraw.finished_at = datetime.utcnow()
-
-    # 4️⃣ (Optional) Ghi log hoặc tạo transaction entry
-    # Có thể thêm bảng transaction_history nếu muốn lưu lại hoạt động này
-
     db.add(withdraw)
     db.commit()
     db.refresh(withdraw)
 
     return {
-        "message": "Withdraw request approved successfully",
+        "message": message,
         "withdraw_id": withdraw.id,
         "partner_id": withdraw.partner_id,
         "amount": float(withdraw.transaction_amount),

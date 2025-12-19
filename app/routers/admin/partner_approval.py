@@ -3,14 +3,19 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from app.database import get_db
+from app.models.account import Account
 from app.schemas.auth import PartnerApprovalRequest, PartnerApprovalResponse, PartnerResponse
 from app.services.auth_service import get_pending_partners, approve_partner
+from app.dependencies.auth import get_current_admin
 
 router = APIRouter(prefix="/api/v1/admin/partners", tags=["Admin Partner Management"])
 
 
 @router.get("/pending", response_model=List[PartnerResponse])
-def get_pending_partner_requests(db: Session = Depends(get_db)):
+def get_pending_partner_requests(
+    current_admin: Account = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
     """Lấy danh sách đối tác đang chờ duyệt"""
     pending_list = get_pending_partners(db)
     
@@ -32,6 +37,7 @@ def get_pending_partner_requests(db: Session = Depends(get_db)):
 @router.post("/approve", response_model=PartnerApprovalResponse)
 def approve_partner_request(
     request: PartnerApprovalRequest,
+    current_admin: Account = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     """Duyệt hoặc từ chối yêu cầu đăng ký đối tác"""

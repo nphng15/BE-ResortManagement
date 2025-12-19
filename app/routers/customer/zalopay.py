@@ -18,7 +18,7 @@ from app.schemas.zalopay import (
     QueryPaymentResponse
 )
 from app.services import zalopay_service
-from app.routers.public.auth import get_current_account
+from app.dependencies.auth import get_current_account
 
 router = APIRouter(prefix="/api/v1/zalopay", tags=["ZaloPay"])
 

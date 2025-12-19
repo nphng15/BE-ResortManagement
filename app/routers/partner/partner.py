@@ -20,6 +20,7 @@ from app.schemas.booking import BookingDetailCreate
 from app.database import get_db
 from app.schemas.payment import PaymentRequest
 from app.services import crud_booking as crud
+from app.dependencies.auth import get_current_partner
 
 router = APIRouter(prefix="/api/v1", tags=["Partners"])
 
@@ -47,26 +48,31 @@ def get_partner_of_resort(
         "phone_number": getattr(partner, "phone_number", None)
     }
 
-@router.get("/partner/{partner_id}/bookings/schedule")
+@router.get("/partner/bookings/schedule")
 def get_partner_booking_schedule(
-    partner_id: int,
-    start: datetime | None = Query(None, description="Ngày bắt đầu hiển thị lịch (YYYY-MM-DD)"),
-    end: datetime | None = Query(None, description="Ngày kết thúc hiển thị lịch (YYYY-MM-DD)"),
+    start: date | None = Query(None, description="Ngày bắt đầu hiển thị lịch (YYYY-MM-DD)"),
+    end: date | None = Query(None, description="Ngày kết thúc hiển thị lịch (YYYY-MM-DD)"),
     resort_id: int | None = Query(None, description="Lọc theo resort cụ thể"),
+    partner: Partner = Depends(get_current_partner),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Lấy danh sách lịch đặt phòng (BookingTimeSlot) của partner trong khoảng thời gian cụ thể.
     Nếu không truyền start/end → mặc định là từ Thứ 2 đến Chủ Nhật của tuần hiện tại.
     """
+    partner_id = partner.id
 
     # 🕓 Nếu không truyền start/end, tự động tính khoảng tuần hiện tại
     if not start or not end:
         today = datetime.utcnow().date()
         start_of_week = today - timedelta(days=today.weekday())  # Thứ 2
         end_of_week = start_of_week + timedelta(days=6)          # Chủ nhật
-        start = datetime.combine(start_of_week, datetime.min.time())
-        end = datetime.combine(end_of_week, datetime.max.time())
+        start = start_of_week
+        end = end_of_week
+    
+    # Convert date to datetime for query
+    start_dt = datetime.combine(start, datetime.min.time())
+    end_dt = datetime.combine(end, datetime.max.time())
 
     query = (
         select(
@@ -82,8 +88,8 @@ def get_partner_booking_schedule(
         .join(Resort, Resort.id == RoomType.resort_id)
         .where(Resort.partner_id == partner_id)
         .where(
-            BookingTimeSlot.finished_time >= start,
-            BookingTimeSlot.started_time <= end
+            BookingTimeSlot.finished_time >= start_dt,
+            BookingTimeSlot.started_time <= end_dt
         )
         .order_by(BookingTimeSlot.started_time.asc())
     )
@@ -107,13 +113,12 @@ def get_partner_booking_schedule(
     ]
 
 
-@router.get("/partner/{partner_id}/statistics")
-def get_partner_statistics(partner_id: int, db: AsyncSession = Depends(get_db)):
-    # 1️⃣ Lấy Partner
-    partner_result = db.execute(select(Partner).where(Partner.id == partner_id))
-    partner = partner_result.scalar_one_or_none()
-    if not partner:
-        raise HTTPException(status_code=404, detail="Partner not found")
+@router.get("/partner/statistics")
+def get_partner_statistics(
+    partner: Partner = Depends(get_current_partner),
+    db: AsyncSession = Depends(get_db)
+):
+    partner_id = partner.id
 
     # 2️⃣ Số lượt đặt mới trong ngày
     today = date.today()
@@ -197,19 +202,14 @@ def get_partner_statistics(partner_id: int, db: AsyncSession = Depends(get_db)):
         }
     }
 
-@router.post("/partner/{partner_id}/withdraw")
+@router.post("/partner/withdraw")
 def create_withdraw_request(
-    partner_id: int,
     amount: float = Query(..., gt=0, description="Số tiền muốn rút"),
+    partner: Partner = Depends(get_current_partner),
     db: AsyncSession = Depends(get_db)
 ):
-    # Lấy thông tin partner
-    partner_result = db.execute(select(Partner).where(Partner.id == partner_id))
-    partner = partner_result.scalar_one_or_none()
-
-    if not partner:
-        raise HTTPException(status_code=404, detail="Partner not found")
-
+    partner_id = partner.id
+    
     # Kiểm tra số dư
     balance = partner.balance or 0
     if Decimal(balance) < Decimal(amount):

@@ -118,6 +118,9 @@ def login_account(db: Session, username: str, password: str) -> tuple[Account, s
     if account.status == "REJECTED":
         return LoginError("rejected", "Account registration was rejected.")
     
+    if account.status == "BANNED":
+        return LoginError("banned", "Account has been banned. Please contact support.")
+    
     if account.status != "ACTIVE":
         return LoginError("inactive", "Account is not active.")
     

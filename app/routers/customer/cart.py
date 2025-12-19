@@ -19,7 +19,7 @@ from app.schemas.cart import CartResponse, CartItemResponse, AddToCartRequest
 from app.database import get_db
 from app.schemas.payment import PaymentRequest
 from app.services import crud_booking as crud
-from app.routers.public.auth import get_current_account
+from app.dependencies.auth import get_current_account
 
 router = APIRouter(prefix="/api/v1", tags=["Cart"])
 
