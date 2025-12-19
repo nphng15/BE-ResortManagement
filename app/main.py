@@ -6,6 +6,10 @@ from app.routers.admin import withdraw, partner_approval, account_management
 
 app = FastAPI()
 
+@app.get("/")
+def read_root():
+    return {"status": "ok", "message": "Backend is running"}
+
 # Auth routes
 app.include_router(auth.router)
 
