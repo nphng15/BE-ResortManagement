@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.account import Account
 from app.models.customer import Customer
 from app.models.partner import Partner
+from app.dependencies.auth import get_current_admin
 
 
 router = APIRouter(prefix="/api/v1/admin/accounts", tags=["Admin Account Management"])
@@ -35,6 +36,7 @@ class AccountListResponse(BaseModel):
 
 @router.get("", response_model=list[AccountListResponse])
 def get_accounts(
+    current_admin: Account = Depends(get_current_admin),
     db: Session = Depends(get_db),
     account_type: Optional[str] = Query(None, description="Lọc theo loại: CUSTOMER hoặc PARTNER"),
     status: Optional[str] = Query(None, description="Lọc theo trạng thái: ACTIVE, BANNED"),
@@ -115,6 +117,7 @@ def get_accounts(
 @router.post("/ban", response_model=BanAccountResponse)
 def ban_account(
     request: BanAccountRequest,
+    current_admin: Account = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     """Cấm tài khoản khách hàng hoặc đối tác"""
@@ -156,6 +159,7 @@ def ban_account(
 @router.post("/unban", response_model=BanAccountResponse)
 def unban_account(
     request: BanAccountRequest,
+    current_admin: Account = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     """Bỏ cấm tài khoản khách hàng hoặc đối tác"""
@@ -189,6 +193,7 @@ def unban_account(
 @router.get("/{account_id}")
 def get_account_detail(
     account_id: int,
+    current_admin: Account = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     """Xem chi tiết tài khoản"""

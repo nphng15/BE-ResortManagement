@@ -3,13 +3,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from datetime import datetime, date
 from app.models import Partner
+from app.models.account import Account
 from app.models.withdraw import Withdraw
 from app.database import get_db
+from app.dependencies.auth import get_current_admin
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin Withdraw Management"])
 
 @router.get("/withdraws")
 def get_withdraw_requests(
+    current_admin: Account = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, le=100),
@@ -76,6 +79,7 @@ def get_withdraw_requests(
 def process_withdraw_request(
     id: int,
     action: str = Query(..., description="Hành động: APPROVE hoặc REJECT"),
+    current_admin: Account = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """Duyệt hoặc từ chối yêu cầu rút tiền"""

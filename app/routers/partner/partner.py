@@ -1,6 +1,5 @@
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import extract, func, select
 from sqlalchemy.orm import selectinload
@@ -21,35 +20,9 @@ from app.schemas.booking import BookingDetailCreate
 from app.database import get_db
 from app.schemas.payment import PaymentRequest
 from app.services import crud_booking as crud
-from app.services.auth_service import validate_token
+from app.dependencies.auth import get_current_partner
 
 router = APIRouter(prefix="/api/v1", tags=["Partners"])
-security = HTTPBearer()
-
-
-def get_current_partner(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> Partner:
-    """Dependency để lấy partner từ token đăng nhập"""
-    token = credentials.credentials
-    account = validate_token(db, token)
-    
-    if not account:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token không hợp lệ hoặc đã hết hạn",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-    
-    # Kiểm tra account có phải là partner không
-    if not account.partner:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Tài khoản không phải là đối tác"
-        )
-    
-    return account.partner
 
 @router.get("/resorts/{id}/partner")
 def get_partner_of_resort(
