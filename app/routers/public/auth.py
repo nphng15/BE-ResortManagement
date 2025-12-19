@@ -130,13 +130,27 @@ def get_current_user(
         "roles": roles
     }
     
-    # Thêm customer_id nếu là CUSTOMER
+    # Thêm thông tin customer đầy đủ nếu là CUSTOMER
     if "CUSTOMER" in roles and account.customer:
-        response["customer_id"] = account.customer.id
+        response["customer"] = {
+            "id": account.customer.id,
+            "fullname": account.customer.fullname,
+            "email": account.customer.email,
+            "phone_number": account.customer.phone_number,
+            "id_number": account.customer.id_number
+        }
     
-    # Thêm partner_id nếu là PARTNER
+    # Thêm thông tin partner đầy đủ nếu là PARTNER
     if "PARTNER" in roles and account.partner:
-        response["partner_id"] = account.partner.id
+        response["partner"] = {
+            "id": account.partner.id,
+            "name": account.partner.name,
+            "phone_number": account.partner.phone_number,
+            "address": account.partner.address,
+            "banking_number": account.partner.banking_number,
+            "bank": account.partner.bank,
+            "balance": float(account.partner.balance) if account.partner.balance else 0
+        }
     
     return response
 
@@ -203,3 +217,138 @@ def register_partner(request: PartnerRegisterRequest, db: Session = Depends(get_
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Registration failed: {str(e)}"
         )
+
+
+from app.schemas.auth import UpdateCustomerRequest, UpdatePartnerRequest, ChangePasswordRequest
+from app.services.auth_service import verify_password, hash_password
+
+
+@router.put("/me/customer")
+def update_customer_profile(
+    request: UpdateCustomerRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Cập nhật thông tin customer"""
+    token = credentials.credentials
+    account = validate_token(db, token)
+    
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    if not account.customer:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tài khoản không phải là customer"
+        )
+    
+    customer = account.customer
+    
+    # Cập nhật các field nếu có
+    if request.fullname is not None:
+        customer.fullname = request.fullname
+    if request.email is not None:
+        customer.email = request.email
+    if request.phone_number is not None:
+        customer.phone_number = request.phone_number
+    if request.id_number is not None:
+        customer.id_number = request.id_number
+    
+    db.commit()
+    db.refresh(customer)
+    
+    return {
+        "message": "Cập nhật thông tin thành công",
+        "customer": {
+            "id": customer.id,
+            "fullname": customer.fullname,
+            "email": customer.email,
+            "phone_number": customer.phone_number,
+            "id_number": customer.id_number
+        }
+    }
+
+
+@router.put("/me/partner")
+def update_partner_profile(
+    request: UpdatePartnerRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Cập nhật thông tin partner"""
+    token = credentials.credentials
+    account = validate_token(db, token)
+    
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    if not account.partner:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tài khoản không phải là partner"
+        )
+    
+    partner = account.partner
+    
+    # Cập nhật các field nếu có
+    if request.name is not None:
+        partner.name = request.name
+    if request.phone_number is not None:
+        partner.phone_number = request.phone_number
+    if request.address is not None:
+        partner.address = request.address
+    if request.banking_number is not None:
+        partner.banking_number = request.banking_number
+    if request.bank is not None:
+        partner.bank = request.bank
+    
+    db.commit()
+    db.refresh(partner)
+    
+    return {
+        "message": "Cập nhật thông tin thành công",
+        "partner": {
+            "id": partner.id,
+            "name": partner.name,
+            "phone_number": partner.phone_number,
+            "address": partner.address,
+            "banking_number": partner.banking_number,
+            "bank": partner.bank
+        }
+    }
+
+
+@router.put("/me/password")
+def change_password(
+    request: ChangePasswordRequest,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Đổi mật khẩu"""
+    token = credentials.credentials
+    account = validate_token(db, token)
+    
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token"
+        )
+    
+    # Kiểm tra mật khẩu cũ
+    if not verify_password(request.old_password, account.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mật khẩu cũ không đúng"
+        )
+    
+    # Cập nhật mật khẩu mới
+    account.password = hash_password(request.new_password)
+    db.commit()
+    
+    return {"message": "Đổi mật khẩu thành công"}

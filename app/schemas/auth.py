@@ -78,3 +78,24 @@ class PartnerApprovalResponse(BaseModel):
     message: str
     account_id: int
     status: str
+
+
+# Update Profile
+class UpdateCustomerRequest(BaseModel):
+    fullname: Optional[str] = Field(None, max_length=100)
+    email: Optional[str] = Field(None, max_length=150)
+    phone_number: Optional[str] = Field(None, max_length=10)
+    id_number: Optional[str] = Field(None, max_length=15)
+
+
+class UpdatePartnerRequest(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    phone_number: Optional[str] = Field(None, max_length=10)
+    address: Optional[str] = Field(None, max_length=255)
+    banking_number: Optional[str] = Field(None, max_length=20)
+    bank: Optional[str] = Field(None, max_length=255)
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str = Field(..., min_length=6, max_length=255)
