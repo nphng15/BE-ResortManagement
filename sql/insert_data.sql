@@ -572,8 +572,7 @@ INSERT INTO offer (room_type_id, cost) VALUES (15, 3200000) ON CONFLICT DO NOTHI
 -- Resort 6 offers
 INSERT INTO offer (room_type_id, cost) VALUES (16, 850000) ON CONFLICT DO NOTHING;
 INSERT INTO offer (room_type_id, cost) VALUES (17, 1500000) ON CONFLICT DO NOTHING;
-IN
-SERT INTO offer (room_type_id, cost) VALUES (18, 2800000) ON CONFLICT DO NOTHING;
+INSERT INTO offer (room_type_id, cost) VALUES (18, 2800000) ON CONFLICT DO NOTHING;
 
 -- Resort 7 offers
 INSERT INTO offer (room_type_id, cost) VALUES (19, 2000000) ON CONFLICT DO NOTHING;
