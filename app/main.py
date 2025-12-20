@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers.customer import cart, history, zalopay
 from app.routers.public import resorts, search, roomtypes, auth
-from app.routers.partner import partner
+from app.routers.partner import partner, room_management
 from app.routers.admin import withdraw, partner_approval, account_management
 
 app = FastAPI()
@@ -35,6 +35,7 @@ app.include_router(zalopay.router)
 
 # Partner routes
 app.include_router(partner.router)
+app.include_router(room_management.router)
 
 # Admin routes
 app.include_router(withdraw.router)
