@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from typing import List
 from decimal import Decimal
 
@@ -282,7 +282,12 @@ async def process_payment(
     result = await db.execute(
         select(BookingDetail)
         .filter(BookingDetail.id == payment_request.booking_detail_id)
-        .options(selectinload(BookingDetail.booking))
+        .options(
+            selectinload(BookingDetail.booking),
+            selectinload(BookingDetail.offer)
+            .selectinload(Offer.room_type)
+            .selectinload(RoomType.resort)
+        )
     )
     booking_detail = result.scalar_one_or_none()
 
@@ -297,9 +302,12 @@ async def process_payment(
     await db.commit()
     await db.refresh(booking_detail)
 
+    # Lấy partner_id từ resort
+    partner_id = booking_detail.offer.room_type.resort.partner_id
+
     invoice = Invoice(
         customer_id=booking_detail.booking.customer_id,
-        partner_id=1,
+        partner_id=partner_id,
         booking_detail_id=booking_detail.id,
         cost=payment_request.paid_amount,
         payment_method=payment_request.payment_method,

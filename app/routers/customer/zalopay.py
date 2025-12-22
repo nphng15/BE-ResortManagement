@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import select
 from decimal import Decimal
 from datetime import datetime
@@ -10,6 +10,8 @@ from app.models.account import Account
 from app.models.booking import Booking
 from app.models.booking_detail import BookingDetail
 from app.models.invoice import Invoice
+from app.models.offer import Offer
+from app.models.room_type import RoomType
 from app.db_async import get_db
 from app.schemas.zalopay import (
     CreatePaymentRequest,
@@ -110,7 +112,12 @@ async def zalopay_callback(callback: ZaloPayCallback, db: AsyncSession = Depends
     result = await db.execute(
         select(Booking)
         .filter(Booking.id == booking_id)
-        .options(selectinload(Booking.booking_details))
+        .options(
+            selectinload(Booking.booking_details)
+            .selectinload(BookingDetail.offer)
+            .selectinload(Offer.room_type)
+            .selectinload(RoomType.resort)
+        )
     )
     booking = result.scalar_one_or_none()
 
@@ -120,9 +127,12 @@ async def zalopay_callback(callback: ZaloPayCallback, db: AsyncSession = Depends
         for detail in booking.booking_details:
             detail.status = "PAID"
             
+            # Lấy partner_id từ resort
+            partner_id = detail.offer.room_type.resort.partner_id
+            
             invoice = Invoice(
                 customer_id=booking.customer_id,
-                partner_id=1,
+                partner_id=partner_id,
                 booking_detail_id=detail.id,
                 cost=detail.cost,
                 finished_time=datetime.now(),
@@ -150,7 +160,12 @@ async def query_payment(
         booking_result = await db.execute(
             select(Booking)
             .filter(Booking.zp_trans_id == request.app_trans_id)
-            .options(selectinload(Booking.booking_details))
+            .options(
+                selectinload(Booking.booking_details)
+                .selectinload(BookingDetail.offer)
+                .selectinload(Offer.room_type)
+                .selectinload(RoomType.resort)
+            )
         )
         booking = booking_result.scalar_one_or_none()
         
@@ -160,9 +175,12 @@ async def query_payment(
             for detail in booking.booking_details:
                 detail.status = "PAID"
                 
+                # Lấy partner_id từ resort
+                partner_id = detail.offer.room_type.resort.partner_id
+                
                 invoice = Invoice(
                     customer_id=booking.customer_id,
-                    partner_id=1,
+                    partner_id=partner_id,
                     booking_detail_id=detail.id,
                     cost=detail.cost,
                     finished_time=datetime.now(),
