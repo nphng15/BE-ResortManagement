@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload, joinedload
 from typing import List
 from decimal import Decimal
@@ -8,10 +8,12 @@ from decimal import Decimal
 from app.models.account import Account
 from app.models.booking import Booking
 from app.models.booking_detail import BookingDetail
+from app.models.booking_timeslot import BookingTimeSlot
 from app.models.invoice import Invoice
 from app.models.number_of_room import BookingDetailUpdate
 from app.models.offer import Offer
 from app.models.room_type import RoomType
+from app.models.room import Room
 from app.models.resort import Resort
 from app.schemas.booking import BookingDetailCreate
 from app.schemas.cart import CartResponse, CartItemResponse, AddToCartRequest
@@ -66,6 +68,35 @@ async def get_cart(
         room_type = offer.room_type if offer else None
         resort = room_type.resort if room_type else None
 
+        # Calculate available rooms for this item's date range
+        available_rooms = 0
+        if room_type and detail.started_at and detail.finished_at:
+            # Count total rooms for this room type
+            total_rooms_result = await db.execute(
+                select(func.count(Room.id)).where(Room.room_type_id == room_type.id)
+            )
+            total_rooms = total_rooms_result.scalar() or 0
+
+            # Count booked rooms in the date range
+            booked_rooms_subq = (
+                select(BookingTimeSlot.room_id)
+                .join(Room, Room.id == BookingTimeSlot.room_id)
+                .where(
+                    and_(
+                        Room.room_type_id == room_type.id,
+                        BookingTimeSlot.started_time < detail.finished_at,
+                        BookingTimeSlot.finished_time > detail.started_at
+                    )
+                )
+                .distinct()
+            )
+            booked_rooms_result = await db.execute(
+                select(func.count()).select_from(booked_rooms_subq.subquery())
+            )
+            booked_rooms = booked_rooms_result.scalar() or 0
+
+            available_rooms = total_rooms - booked_rooms
+
         item = CartItemResponse(
             id=detail.id,
             offer_id=detail.offer_id,
@@ -76,7 +107,8 @@ async def get_cart(
             cost=float(detail.cost) if detail.cost else 0,
             started_at=detail.started_at,
             finished_at=detail.finished_at,
-            status=detail.status
+            status=detail.status,
+            available_rooms=available_rooms
         )
         cart_items.append(item)
         total_cost += detail.cost if detail.cost else Decimal("0")
@@ -98,7 +130,8 @@ async def add_to_cart(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Thêm item vào giỏ hàng
+    Thêm item vào giỏ hàng.
+    Nếu đã có item với cùng offer_id và cùng khoảng thời gian thì tăng number_of_rooms.
     """
     if not current_account.customer:
         raise HTTPException(
@@ -107,29 +140,72 @@ async def add_to_cart(
         )
     customer_id = current_account.customer.id
 
-    # Check phòng còn trống trước khi thêm vào giỏ
-    await validate_room_availability(
-        db=db,
-        offer_id=request.offer_id,
-        number_of_rooms=request.number_of_rooms,
-        started_at=request.started_at,
-        finished_at=request.finished_at
-    )
-
     cart = await crud.get_or_create_cart(db=db, customer_id=customer_id)
 
-    booking_detail = BookingDetailCreate(
-        offer_id=request.offer_id,
-        number_of_rooms=request.number_of_rooms,
-        started_at=request.started_at,
-        finished_at=request.finished_at,
-        status="pending",
-        customer_id=customer_id
+    # Check xem đã có item với cùng offer_id và cùng khoảng thời gian chưa
+    existing_item_result = await db.execute(
+        select(BookingDetail)
+        .filter(
+            BookingDetail.booking_id == cart.id,
+            BookingDetail.offer_id == request.offer_id,
+            BookingDetail.started_at == request.started_at,
+            BookingDetail.finished_at == request.finished_at,
+            BookingDetail.status == "pending"
+        )
     )
+    existing_item = existing_item_result.scalar_one_or_none()
 
-    await crud.add_booking_detail(db=db, booking_id=cart.id, booking_detail=booking_detail)
+    if existing_item:
+        # Tăng số lượng phòng
+        new_number_of_rooms = existing_item.number_of_rooms + request.number_of_rooms
 
-    return {"message": "Item added to cart successfully"}
+        # Check phòng còn trống với số lượng mới
+        await validate_room_availability(
+            db=db,
+            offer_id=request.offer_id,
+            number_of_rooms=new_number_of_rooms,
+            started_at=request.started_at,
+            finished_at=request.finished_at
+        )
+
+        # Lấy giá offer
+        offer_result = await db.execute(select(Offer).filter(Offer.id == request.offer_id))
+        offer = offer_result.scalar_one_or_none()
+        offer_price = offer.cost if offer and offer.cost else Decimal("0")
+
+        old_cost = existing_item.cost or Decimal("0")
+        existing_item.number_of_rooms = new_number_of_rooms
+        existing_item.cost = new_number_of_rooms * offer_price
+
+        # Cập nhật tổng cost của booking
+        if cart.cost is None:
+            cart.cost = Decimal("0")
+        cart.cost = cart.cost - old_cost + existing_item.cost
+
+        await db.commit()
+        return {"message": "Đã tăng số lượng phòng trong giỏ hàng"}
+    else:
+        # Check phòng còn trống trước khi thêm vào giỏ
+        await validate_room_availability(
+            db=db,
+            offer_id=request.offer_id,
+            number_of_rooms=request.number_of_rooms,
+            started_at=request.started_at,
+            finished_at=request.finished_at
+        )
+
+        booking_detail = BookingDetailCreate(
+            offer_id=request.offer_id,
+            number_of_rooms=request.number_of_rooms,
+            started_at=request.started_at,
+            finished_at=request.finished_at,
+            status="pending",
+            customer_id=customer_id
+        )
+
+        await crud.add_booking_detail(db=db, booking_id=cart.id, booking_detail=booking_detail)
+
+        return {"message": "Item added to cart successfully"}
 
 
 @router.put("/booking-detail/{booking_detail_id}")

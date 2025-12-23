@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, and_
+from datetime import datetime, timedelta
+from typing import Optional
 
 from app.db_async import get_db
 from app.models.account import Account
@@ -8,8 +10,10 @@ from app.models.feedback import Feedback
 from app.models.resort import Resort
 from app.models.resort_images import ResortImage
 from app.models.room_type import RoomType
+from app.models.room import Room
 from app.models.offer import Offer
 from app.models.booking_detail import BookingDetail
+from app.models.booking_timeslot import BookingTimeSlot
 from app.schemas.feedback import FeedbackCreate, FeedbackResponse
 from app.dependencies.auth import get_current_account
 
@@ -18,8 +22,27 @@ router = APIRouter(prefix="/api/v1", tags=["Resorts"])
 @router.get("/resorts")
 async def get_resort_detail(
     id: int = Query(...),
+    checkin: Optional[str] = Query(None),
+    checkout: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
+    # Parse checkin/checkout dates
+    if checkin is None:
+        checkin_date = datetime.now()
+    else:
+        try:
+            checkin_date = datetime.fromisoformat(checkin)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format for checkin, use YYYY-MM-DD")
+
+    if checkout is None:
+        checkout_date = checkin_date + timedelta(days=1)
+    else:
+        try:
+            checkout_date = datetime.fromisoformat(checkout)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format for checkout, use YYYY-MM-DD")
+
     resort_result = await db.execute(select(Resort).where(Resort.id == id))
     resort = resort_result.scalar_one_or_none()
 
@@ -41,17 +64,45 @@ async def get_resort_detail(
             RoomType.price
         ).where(RoomType.resort_id == id)
     )
-    room_types = [
-        {
+    room_types_data = roomtype_result.all()
+
+    room_types = []
+    for r in room_types_data:
+        # Count total rooms for this room type
+        total_rooms_result = await db.execute(
+            select(func.count(Room.id)).where(Room.room_type_id == r.id)
+        )
+        total_rooms = total_rooms_result.scalar() or 0
+
+        # Count booked rooms in the date range
+        booked_rooms_subq = (
+            select(BookingTimeSlot.room_id)
+            .join(Room, Room.id == BookingTimeSlot.room_id)
+            .where(
+                and_(
+                    Room.room_type_id == r.id,
+                    BookingTimeSlot.started_time < checkout_date,
+                    BookingTimeSlot.finished_time > checkin_date
+                )
+            )
+            .distinct()
+        )
+        booked_rooms_result = await db.execute(
+            select(func.count()).select_from(booked_rooms_subq.subquery())
+        )
+        booked_rooms = booked_rooms_result.scalar() or 0
+
+        available_rooms = total_rooms - booked_rooms
+
+        room_types.append({
             "id": r.id,
             "name": r.name,
             "area": float(r.area),
             "bed_amount": r.bed_amount,
             "people_amount": r.people_amount,
-            "price": float(r.price)
-        }
-        for r in roomtype_result.all()
-    ]
+            "price": float(r.price),
+            "available_rooms": available_rooms
+        })
 
     return {
         "id": resort.id,
