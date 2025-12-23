@@ -15,7 +15,7 @@ from app.models.room import Room
 from app.models.room_type import RoomType
 from app.models.withdraw import Withdraw
 from app.db_async import get_db
-from app.dependencies.auth import get_current_partner
+from app.dependencies.auth import get_current_partner_async
 
 router = APIRouter(prefix="/api/v1", tags=["Partners"])
 
@@ -48,7 +48,7 @@ async def get_partner_booking_schedule(
     start: date | None = Query(None),
     end: date | None = Query(None),
     resort_id: int | None = Query(None),
-    partner: Partner = Depends(get_current_partner),
+    partner: Partner = Depends(get_current_partner_async),
     db: AsyncSession = Depends(get_db)
 ):
     partner_id = partner.id
@@ -101,7 +101,7 @@ async def get_partner_booking_schedule(
 
 @router.get("/partner/statistics")
 async def get_partner_statistics(
-    partner: Partner = Depends(get_current_partner),
+    partner: Partner = Depends(get_current_partner_async),
     db: AsyncSession = Depends(get_db)
 ):
     partner_id = partner.id
@@ -167,7 +167,7 @@ async def get_partner_statistics(
 @router.post("/partner/withdraw")
 async def create_withdraw_request(
     amount: float = Query(..., gt=0),
-    partner: Partner = Depends(get_current_partner),
+    partner: Partner = Depends(get_current_partner_async),
     db: AsyncSession = Depends(get_db)
 ):
     balance = partner.balance or 0

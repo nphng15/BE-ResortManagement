@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
+from sqlalchemy.orm import selectinload
 from typing import Optional
 from pydantic import BaseModel
 
@@ -122,7 +123,9 @@ async def ban_account(
 ):
     """Cấm tài khoản khách hàng hoặc đối tác"""
     account = (await db.execute(
-        select(Account).where(Account.account_id == request.account_id)
+        select(Account)
+        .options(selectinload(Account.roles))
+        .where(Account.account_id == request.account_id)
     )).scalar_one_or_none()
     
     if not account:
@@ -197,8 +200,15 @@ async def get_account_detail(
     db: AsyncSession = Depends(get_db)
 ):
     """Xem chi tiết tài khoản"""
+    # Eager load relationships để tránh lỗi lazy loading trong async
     account = (await db.execute(
-        select(Account).where(Account.account_id == account_id)
+        select(Account)
+        .options(
+            selectinload(Account.roles),
+            selectinload(Account.customer),
+            selectinload(Account.partner)
+        )
+        .where(Account.account_id == account_id)
     )).scalar_one_or_none()
     
     if not account:
