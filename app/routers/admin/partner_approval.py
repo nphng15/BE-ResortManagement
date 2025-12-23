@@ -5,7 +5,7 @@ from typing import List
 from app.db_async import get_db
 from app.models.account import Account
 from app.schemas.auth import PartnerApprovalRequest, PartnerApprovalResponse, PartnerResponse
-from app.services.auth_service import get_pending_partners, approve_partner
+from app.services.auth_service import get_pending_partners_async, approve_partner_async
 from app.dependencies.auth import get_current_admin
 
 router = APIRouter(prefix="/api/v1/admin/partners", tags=["Admin Partner Management"])
@@ -17,7 +17,7 @@ async def get_pending_partner_requests(
     db: AsyncSession = Depends(get_db)
 ):
     """Lấy danh sách đối tác đang chờ duyệt"""
-    pending_list = await get_pending_partners(db)
+    pending_list = await get_pending_partners_async(db)
     
     return [
         PartnerResponse(
@@ -41,7 +41,7 @@ async def approve_partner_request(
     db: AsyncSession = Depends(get_db)
 ):
     """Duyệt hoặc từ chối yêu cầu đăng ký đối tác"""
-    account = await approve_partner(db, request.account_id, request.approved)
+    account = await approve_partner_async(db, request.account_id, request.approved)
     
     if not account:
         raise HTTPException(

@@ -256,7 +256,7 @@ def register_partner_account(
 
 
 def get_pending_partners(db: Session) -> list:
-    """Lấy danh sách đối tác đang chờ duyệt"""
+    """Lấy danh sách đối tác đang chờ duyệt (sync version)"""
     return db.query(Partner, Account).join(
         Account, Partner.account_id == Account.account_id
     ).filter(
@@ -266,7 +266,7 @@ def get_pending_partners(db: Session) -> list:
 
 
 def approve_partner(db: Session, account_id: int, approved: bool) -> Optional[Account]:
-    """Admin duyệt hoặc từ chối đối tác"""
+    """Admin duyệt hoặc từ chối đối tác (sync version)"""
     account = db.query(Account).filter(
         Account.account_id == account_id,
         Account.status == "PENDING",
@@ -283,4 +283,44 @@ def approve_partner(db: Session, account_id: int, approved: bool) -> Optional[Ac
     
     db.commit()
     db.refresh(account)
+    return account
+
+
+# Async versions for async routers
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+
+async def get_pending_partners_async(db: AsyncSession) -> list:
+    """Lấy danh sách đối tác đang chờ duyệt (async version)"""
+    query = select(Partner, Account).join(
+        Account, Partner.account_id == Account.account_id
+    ).where(
+        Account.status == "PENDING",
+        Account.is_deleted == False
+    )
+    result = await db.execute(query)
+    return result.all()
+
+
+async def approve_partner_async(db: AsyncSession, account_id: int, approved: bool) -> Optional[Account]:
+    """Admin duyệt hoặc từ chối đối tác (async version)"""
+    query = select(Account).where(
+        Account.account_id == account_id,
+        Account.status == "PENDING",
+        Account.is_deleted == False
+    )
+    result = await db.execute(query)
+    account = result.scalar_one_or_none()
+    
+    if not account:
+        return None
+    
+    if approved:
+        account.status = "ACTIVE"
+    else:
+        account.status = "REJECTED"
+    
+    await db.commit()
+    await db.refresh(account)
     return account
