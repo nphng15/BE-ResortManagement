@@ -31,7 +31,15 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
         )
     
     try:
-        account = register_account(db, request.username, request.password)
+        account = register_account(
+            db=db,
+            username=request.username,
+            password=request.password,
+            fullname=request.fullname,
+            email=request.email,
+            phone_number=request.phone_number,
+            id_number=request.id_number
+        )
         return RegisterResponse(
             message="Registration successful",
             account=AccountResponse(

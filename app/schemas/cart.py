@@ -14,6 +14,7 @@ class CartItemResponse(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     status: Optional[str] = None
+    available_rooms: Optional[int] = None
 
     class Config:
         orm_mode = True

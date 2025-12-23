@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hóa đơn đặt phòng #{{ booking_id }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 650px;
+            margin: 20px auto;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2E7D32, #4CAF50);
+            color: #fff;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header .check-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .content {
+            padding: 25px;
+        }
+
+        .invoice-info {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .invoice-info div {
+            margin: 5px 0;
+        }
+
+        .invoice-info .label {
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .invoice-info .value {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2E7D32;
+            margin: 20px 0 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .customer-info {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .customer-info p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .customer-info strong {
+            color: #555;
+            min-width: 100px;
+            display: inline-block;
+        }
+
+        .booking-item {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .booking-item .resort-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2E7D32;
+            margin-bottom: 5px;
+        }
+
+        .booking-item .resort-address {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .booking-item .details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            font-size: 14px;
+        }
+
+        .booking-item .detail-item {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        .booking-item .detail-item .label {
+            color: #888;
+            font-size: 12px;
+        }
+
+        .booking-item .detail-item .value {
+            font-weight: 500;
+        }
+
+        .price-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+
+        .price-table th,
+        .price-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .price-table th {
+            background: #f8f9fa;
+            color: #555;
+            font-weight: 600;
+        }
+
+        .price-table td.price {
+            text-align: right;
+        }
+
+        .price-table .total-row {
+            background: #2E7D32;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .price-table .total-row td {
+            border: none;
+        }
+
+        .invoice-box {
+            background: #e8f5e9;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        .invoice-box h4 {
+            color: #2E7D32;
+            margin-bottom: 10px;
+        }
+
+        .invoice-box .invoice-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px dashed #c8e6c9;
+            font-size: 14px;
+        }
+
+        .invoice-box .invoice-item:last-child {
+            border-bottom: none;
+        }
+
+        .payment-status {
+            display: inline-block;
+            background: #4CAF50;
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .footer {
+            background: #f8f9fa;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .footer p {
+            margin: 5px 0;
+        }
+
+        .note {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 12px 15px;
+            margin: 15px 0;
+            font-size: 13px;
+        }
+
+        @media (max-width: 480px) {
+            .invoice-info {
+                flex-direction: column;
+            }
+
+            .booking-item .details {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="check-icon">✓</div>
+            <h1>Đặt phòng thành công!</h1>
+            <p>Cảm ơn bạn đã sử dụng dịch vụ của chúng tôi</p>
+        </div>
+
+        <div class="content">
+            <!-- Invoice Info -->
+            <div class="invoice-info">
+                <div>
+                    <div class="label">Mã đặt phòng</div>
+                    <div class="value">#{{ booking_id }}</div>
+                </div>
+                <div>
+                    <div class="label">Ngày thanh toán</div>
+                    <div class="value">{{ payment_time }}</div>
+                </div>
+                <div>
+                    <div class="label">Phương thức</div>
+                    <div class="value">{{ payment_method }}</div>
+                </div>
+                <div>
+                    <div class="label">Trạng thái</div>
+                    <div class="value"><span class="payment-status">Đã thanh toán</span></div>
+                </div>
+            </div>
+
+            <!-- Customer Info -->
+            <div class="section-title">Thông tin khách hàng</div>
+            <div class="customer-info">
+                <p><strong>Họ tên:</strong> {{ customer_name }}</p>
+                <p><strong>Email:</strong> {{ customer_email }}</p>
+                {% if customer_phone %}
+                <p><strong>Điện thoại:</strong> {{ customer_phone }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Booking Details -->
+            <div class="section-title">Chi tiết đặt phòng</div>
+            {% for detail in booking_details %}
+            <div class="booking-item">
+                <div class="resort-name">{{ detail.resort_name }}</div>
+                {% if detail.resort_address %}
+                <div class="resort-address">📍 {{ detail.resort_address }}</div>
+                {% endif %}
+                <div class="details">
+                    <div class="detail-item">
+                        <div class="label">Loại phòng</div>
+                        <div class="value">{{ detail.room_type }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="label">Số phòng</div>
+                        <div class="value">{{ detail.number_of_rooms }} phòng</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="label">Số đêm</div>
+                        <div class="value">{{ detail.nights }} đêm</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="label">Nhận phòng</div>
+                        <div class="value">{{ detail.check_in }}</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="label">Trả phòng</div>
+                        <div class="value">{{ detail.check_out }}</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            <!-- Price Table -->
+            <div class="section-title">Chi tiết hóa đơn</div>
+            <table class="price-table">
+                <thead>
+                    <tr>
+                        <th>Mô tả</th>
+                        <th>SL</th>
+                        <th>Đơn giá</th>
+                        <th class="price">Thành tiền</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for detail in booking_details %}
+                    <tr>
+                        <td>{{ detail.resort_name }} - {{ detail.room_type }}</td>
+                        <td>{{ detail.number_of_rooms }} x {{ detail.nights }} đêm</td>
+                        <td>{{ "{:,}".format(detail.unit_price|int) }} VND</td>
+                        <td class="price">{{ "{:,}".format(detail.cost|int) }} VND</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="total-row">
+                        <td colspan="3"><strong>TỔNG CỘNG</strong></td>
+                        <td class="price"><strong>{{ "{:,}".format(total_cost|int) }} VND</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- Invoice List -->
+            {% if invoices %}
+            <div class="invoice-box">
+                <h4>📄 Danh sách hóa đơn</h4>
+                {% for inv in invoices %}
+                <div class="invoice-item">
+                    <span>Hóa đơn #{{ inv.invoice_id }} - {{ inv.finished_time }}</span>
+                    <span>{{ "{:,}".format(inv.cost|int) }} VND</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Note -->
+            <div class="note">
+                <strong>📌 Lưu ý:</strong> Vui lòng xuất trình email này hoặc mã đặt phòng <strong>#{{ booking_id
+                    }}</strong> khi nhận phòng. Nếu có thắc mắc, xin liên hệ với chúng tôi qua email hoặc hotline.
+            </div>
+        </div>
+
+        <div class="footer">
+            <p><strong>Resort Booking</strong></p>
+            <p>Email này được gửi tự động, vui lòng không trả lời.</p>
+            <p>© {{ current_year }} Resort Booking. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+
+</html>

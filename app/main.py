@@ -1,11 +1,36 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.routers.customer import cart, history, zalopay
 from app.routers.public import resorts, search, roomtypes, auth
-from app.routers.partner import partner
+from app.routers.partner import partner, room_management
 from app.routers.admin import withdraw, partner_approval, account_management
 
 app = FastAPI()
+
+
+class CatchAllExceptionMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:
+            print(f"Unhandled exception: {type(exc).__name__}: {exc}")
+            import traceback
+            traceback.print_exc()
+            return JSONResponse(
+                status_code=500,
+                content={"detail": f"Internal server error: {str(exc)}"},
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "*",
+                    "Access-Control-Allow-Headers": "*",
+                }
+            )
+
+
+# Add exception middleware first (runs last)
+app.add_middleware(CatchAllExceptionMiddleware)
 
 # CORS configuration
 app.add_middleware(
@@ -35,6 +60,7 @@ app.include_router(zalopay.router)
 
 # Partner routes
 app.include_router(partner.router)
+app.include_router(room_management.router)
 
 # Admin routes
 app.include_router(withdraw.router)

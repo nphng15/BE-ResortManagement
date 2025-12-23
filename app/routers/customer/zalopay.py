@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import select
 from decimal import Decimal
 from datetime import datetime
@@ -9,7 +10,11 @@ from app.models.account import Account
 from app.models.booking import Booking
 from app.models.booking_detail import BookingDetail
 from app.models.invoice import Invoice
-from app.database import get_db
+from app.models.offer import Offer
+from app.models.room_type import RoomType
+from app.db_async import get_db
+from app.services.booking_timeslot_service import create_booking_timeslots
+from app.services.email_service import send_booking_confirmation_email
 from app.schemas.zalopay import (
     CreatePaymentRequest,
     CreatePaymentResponse,
@@ -24,15 +29,14 @@ router = APIRouter(prefix="/api/v1/zalopay", tags=["ZaloPay"])
 
 
 @router.post("/create", response_model=CreatePaymentResponse)
-def create_payment(
+async def create_payment(
     request: CreatePaymentRequest,
     current_account: Account = Depends(get_current_account),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Tạo đơn thanh toán ZaloPay cho booking
     """
-    # Kiểm tra customer
     if not current_account.customer:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -40,8 +44,7 @@ def create_payment(
         )
     customer_id = current_account.customer.id
 
-    # Lấy booking
-    result = db.execute(
+    result = await db.execute(
         select(Booking).filter(
             Booking.id == request.booking_id,
             Booking.customer_id == customer_id,
@@ -56,7 +59,6 @@ def create_payment(
             detail="Không tìm thấy booking hoặc booking không thuộc về bạn"
         )
 
-    # Tính tổng tiền
     amount = int(booking.cost or 0)
     if amount <= 0:
         raise HTTPException(
@@ -64,7 +66,6 @@ def create_payment(
             detail="Giỏ hàng trống hoặc chưa có giá"
         )
 
-    # Tạo order trên ZaloPay
     zalo_result = zalopay_service.create_order(
         booking_id=booking.id,
         amount=amount,
@@ -78,9 +79,8 @@ def create_payment(
             detail=f"ZaloPay error: {zalo_result.get('return_message')}"
         )
 
-    # Lưu app_trans_id vào booking để verify sau
     booking.zp_trans_id = zalo_result.get("app_trans_id")
-    db.commit()
+    await db.commit()
 
     return CreatePaymentResponse(
         return_code=zalo_result.get("return_code"),
@@ -92,15 +92,13 @@ def create_payment(
 
 
 @router.post("/callback")
-def zalopay_callback(callback: ZaloPayCallback, db: Session = Depends(get_db)):
+async def zalopay_callback(callback: ZaloPayCallback, db: AsyncSession = Depends(get_db)):
     """
     Webhook nhận callback từ ZaloPay khi thanh toán hoàn tất
     """
-    # Verify MAC
     if not zalopay_service.verify_callback(callback.data, callback.mac):
         return {"return_code": -1, "return_message": "mac not equal"}
 
-    # Parse data
     try:
         data = json.loads(callback.data)
     except json.JSONDecodeError:
@@ -113,75 +111,138 @@ def zalopay_callback(callback: ZaloPayCallback, db: Session = Depends(get_db)):
     if not booking_id:
         return {"return_code": -1, "return_message": "missing booking_id"}
 
-    # Cập nhật booking kèm booking_details
-    result = db.execute(
+    result = await db.execute(
         select(Booking)
         .filter(Booking.id == booking_id)
-        .options(selectinload(Booking.booking_details))
+        .options(
+            selectinload(Booking.customer),
+            selectinload(Booking.booking_details)
+            .selectinload(BookingDetail.offer)
+            .selectinload(Offer.room_type)
+            .selectinload(RoomType.resort)
+        )
     )
     booking = result.scalar_one_or_none()
 
     if booking and booking.status == "pending":
         booking.status = "paid"
+        created_invoices = []
+        payment_time = datetime.now()
         
-        # Tạo invoice cho từng booking_detail (từng phòng đã đặt)
         for detail in booking.booking_details:
             detail.status = "PAID"
             
+            # Lấy partner_id từ resort
+            partner_id = detail.offer.room_type.resort.partner_id
+            
             invoice = Invoice(
                 customer_id=booking.customer_id,
-                partner_id=1,  # TODO: lấy partner_id từ offer/room_type/resort
+                partner_id=partner_id,
                 booking_detail_id=detail.id,
                 cost=detail.cost,
-                finished_time=datetime.now(),
+                finished_time=payment_time,
                 payment_method="ZALOPAY"
             )
             db.add(invoice)
+            await db.flush()
+            created_invoices.append(invoice)
+            
+            # Tạo BookingTimeSlot cho các phòng được book
+            await create_booking_timeslots(db, detail, invoice_id=invoice.id)
         
-        db.commit()
+        await db.commit()
+        
+        # Gửi email xác nhận kèm hóa đơn
+        try:
+            customer = booking.customer
+            if customer and customer.email:
+                await send_booking_confirmation_email(
+                    customer_email=customer.email,
+                    customer_name=customer.fullname,
+                    customer_phone=customer.phone_number,
+                    booking_id=booking.id,
+                    booking_details=booking.booking_details,
+                    invoices=created_invoices,
+                    total_cost=float(booking.cost or 0),
+                    payment_method="ZALOPAY",
+                    payment_time=payment_time
+                )
+        except Exception as e:
+            print(f"Failed to send booking confirmation email: {e}")
 
     return {"return_code": 1, "return_message": "success"}
 
 
 @router.post("/query", response_model=QueryPaymentResponse)
-def query_payment(
+async def query_payment(
     request: QueryPaymentRequest,
     current_account: Account = Depends(get_current_account),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Query trạng thái thanh toán từ ZaloPay
     """
     result = zalopay_service.query_order(request.app_trans_id)
     
-    # Nếu thanh toán thành công, cập nhật booking
     if result.get("return_code") == 1:
-        # Tìm booking theo app_trans_id kèm booking_details
-        booking_result = db.execute(
+        booking_result = await db.execute(
             select(Booking)
             .filter(Booking.zp_trans_id == request.app_trans_id)
-            .options(selectinload(Booking.booking_details))
+            .options(
+                selectinload(Booking.customer),
+                selectinload(Booking.booking_details)
+                .selectinload(BookingDetail.offer)
+                .selectinload(Offer.room_type)
+                .selectinload(RoomType.resort)
+            )
         )
         booking = booking_result.scalar_one_or_none()
         
         if booking and booking.status == "pending":
             booking.status = "paid"
+            created_invoices = []
+            payment_time = datetime.now()
             
-            # Tạo invoice cho từng booking_detail
             for detail in booking.booking_details:
                 detail.status = "PAID"
                 
+                # Lấy partner_id từ resort
+                partner_id = detail.offer.room_type.resort.partner_id
+                
                 invoice = Invoice(
                     customer_id=booking.customer_id,
-                    partner_id=1,
+                    partner_id=partner_id,
                     booking_detail_id=detail.id,
                     cost=detail.cost,
-                    finished_time=datetime.now(),
+                    finished_time=payment_time,
                     payment_method="ZALOPAY"
                 )
                 db.add(invoice)
+                await db.flush()
+                created_invoices.append(invoice)
+                
+                # Tạo BookingTimeSlot cho các phòng được book
+                await create_booking_timeslots(db, detail, invoice_id=invoice.id)
             
-            db.commit()
+            await db.commit()
+            
+            # Gửi email xác nhận kèm hóa đơn
+            try:
+                customer = booking.customer
+                if customer and customer.email:
+                    await send_booking_confirmation_email(
+                        customer_email=customer.email,
+                        customer_name=customer.fullname,
+                        customer_phone=customer.phone_number,
+                        booking_id=booking.id,
+                        booking_details=booking.booking_details,
+                        invoices=created_invoices,
+                        total_cost=float(booking.cost or 0),
+                        payment_method="ZALOPAY",
+                        payment_time=payment_time
+                    )
+            except Exception as e:
+                print(f"Failed to send booking confirmation email: {e}")
 
     return QueryPaymentResponse(
         return_code=result.get("return_code"),

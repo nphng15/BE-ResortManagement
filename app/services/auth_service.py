@@ -56,7 +56,16 @@ def get_account_by_id(db: Session, account_id: int) -> Optional[Account]:
     ).first()
 
 
-def register_account(db: Session, username: str, password: str, role_title: str = "CUSTOMER") -> Account:
+def register_account(
+    db: Session, 
+    username: str, 
+    password: str, 
+    role_title: str = "CUSTOMER",
+    fullname: str = None,
+    email: str = None,
+    phone_number: str = None,
+    id_number: str = None
+) -> Account:
     """Đăng ký tài khoản mới"""
     from app.models.customer import Customer
     
@@ -86,6 +95,10 @@ def register_account(db: Session, username: str, password: str, role_title: str 
     if role_title == "CUSTOMER":
         new_customer = Customer(
             account_id=new_account.account_id,
+            fullname=fullname,
+            email=email,
+            phone_number=phone_number,
+            id_number=id_number,
             is_deleted=False
         )
         db.add(new_customer)

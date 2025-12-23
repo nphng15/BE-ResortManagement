@@ -5,13 +5,13 @@ from datetime import datetime, date
 from app.models import Partner
 from app.models.account import Account
 from app.models.withdraw import Withdraw
-from app.database import get_db
+from app.db_async import get_db
 from app.dependencies.auth import get_current_admin
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Admin Withdraw Management"])
 
 @router.get("/withdraws")
-def get_withdraw_requests(
+async def get_withdraw_requests(
     current_admin: Account = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
     page: int = Query(1, ge=1),
@@ -21,7 +21,6 @@ def get_withdraw_requests(
     start_date: date | None = Query(None),
     end_date: date | None = Query(None)
 ):
-    print('here')
     # Base query
     query = select(Withdraw, Partner.name).join(Partner, Withdraw.partner_id == Partner.id)
 
@@ -42,11 +41,11 @@ def get_withdraw_requests(
     count_query = select(func.count()).select_from(Withdraw)
     if filters:
         count_query = count_query.where(and_(*filters))
-    total_result = db.execute(count_query)
+    total_result = await db.execute(count_query)
     total = total_result.scalar()
 
     # Lấy dữ liệu trang hiện tại
-    result = db.execute(
+    result = await db.execute(
         query.order_by(Withdraw.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
@@ -76,7 +75,7 @@ def get_withdraw_requests(
 
 
 @router.put("/withdraws/{id}")
-def process_withdraw_request(
+async def process_withdraw_request(
     id: int,
     action: str = Query(..., description="Hành động: APPROVE hoặc REJECT"),
     current_admin: Account = Depends(get_current_admin),
@@ -87,7 +86,7 @@ def process_withdraw_request(
     if action not in ["APPROVE", "REJECT"]:
         raise HTTPException(status_code=400, detail="Action must be APPROVE or REJECT")
 
-    result = db.execute(select(Withdraw).where(Withdraw.id == id))
+    result = await db.execute(select(Withdraw).where(Withdraw.id == id))
     withdraw = result.scalar_one_or_none()
 
     if not withdraw:
@@ -101,7 +100,7 @@ def process_withdraw_request(
         message = "Withdraw request approved successfully"
     else:
         # Hoàn tiền về balance của partner
-        partner_result = db.execute(select(Partner).where(Partner.id == withdraw.partner_id))
+        partner_result = await db.execute(select(Partner).where(Partner.id == withdraw.partner_id))
         partner = partner_result.scalar_one_or_none()
         if partner:
             partner.balance = (partner.balance or 0) + withdraw.transaction_amount
@@ -111,8 +110,8 @@ def process_withdraw_request(
 
     withdraw.finished_at = datetime.utcnow()
     db.add(withdraw)
-    db.commit()
-    db.refresh(withdraw)
+    await db.commit()
+    await db.refresh(withdraw)
 
     return {
         "message": message,

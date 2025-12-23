@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
 from app.database import Base
 
+
 class Offer(Base):
     __tablename__ = "offer"
 

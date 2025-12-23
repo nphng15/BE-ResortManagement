@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from typing import Optional
 from pydantic import BaseModel
 
-from app.database import get_db
+from app.db_async import get_db
 from app.models.account import Account
 from app.models.customer import Customer
 from app.models.partner import Partner
@@ -35,9 +35,9 @@ class AccountListResponse(BaseModel):
 
 
 @router.get("", response_model=list[AccountListResponse])
-def get_accounts(
+async def get_accounts(
     current_admin: Account = Depends(get_current_admin),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     account_type: Optional[str] = Query(None, description="Lọc theo loại: CUSTOMER hoặc PARTNER"),
     status: Optional[str] = Query(None, description="Lọc theo trạng thái: ACTIVE, BANNED"),
     search: Optional[str] = Query(None, description="Tìm kiếm theo username hoặc tên"),
@@ -66,7 +66,7 @@ def get_accounts(
                 )
             )
         
-        customers = db.execute(customer_query).all()
+        customers = (await db.execute(customer_query)).all()
         for account, customer in customers:
             results.append(AccountListResponse(
                 account_id=account.account_id,
@@ -96,7 +96,7 @@ def get_accounts(
                 )
             )
         
-        partners = db.execute(partner_query).all()
+        partners = (await db.execute(partner_query)).all()
         for account, partner in partners:
             results.append(AccountListResponse(
                 account_id=account.account_id,
@@ -115,15 +115,15 @@ def get_accounts(
 
 
 @router.post("/ban", response_model=BanAccountResponse)
-def ban_account(
+async def ban_account(
     request: BanAccountRequest,
     current_admin: Account = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Cấm tài khoản khách hàng hoặc đối tác"""
-    account = db.execute(
+    account = (await db.execute(
         select(Account).where(Account.account_id == request.account_id)
-    ).scalar_one_or_none()
+    )).scalar_one_or_none()
     
     if not account:
         raise HTTPException(
@@ -146,8 +146,8 @@ def ban_account(
         )
     
     account.status = "BANNED"
-    db.commit()
-    db.refresh(account)
+    await db.commit()
+    await db.refresh(account)
     
     return BanAccountResponse(
         message="Account has been banned successfully",
@@ -157,15 +157,15 @@ def ban_account(
 
 
 @router.post("/unban", response_model=BanAccountResponse)
-def unban_account(
+async def unban_account(
     request: BanAccountRequest,
     current_admin: Account = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Bỏ cấm tài khoản khách hàng hoặc đối tác"""
-    account = db.execute(
+    account = (await db.execute(
         select(Account).where(Account.account_id == request.account_id)
-    ).scalar_one_or_none()
+    )).scalar_one_or_none()
     
     if not account:
         raise HTTPException(
@@ -180,8 +180,8 @@ def unban_account(
         )
     
     account.status = "ACTIVE"
-    db.commit()
-    db.refresh(account)
+    await db.commit()
+    await db.refresh(account)
     
     return BanAccountResponse(
         message="Account has been unbanned successfully",
@@ -191,15 +191,15 @@ def unban_account(
 
 
 @router.get("/{account_id}")
-def get_account_detail(
+async def get_account_detail(
     account_id: int,
     current_admin: Account = Depends(get_current_admin),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Xem chi tiết tài khoản"""
-    account = db.execute(
+    account = (await db.execute(
         select(Account).where(Account.account_id == account_id)
-    ).scalar_one_or_none()
+    )).scalar_one_or_none()
     
     if not account:
         raise HTTPException(

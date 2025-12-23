@@ -4,8 +4,15 @@ import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:password@db:5432/fastapi_db")
 
-# Engine async thực sự cho app
-engine = create_async_engine(DATABASE_URL, echo=True)
+# Engine async - disable prepared statements for Supabase pgbouncer
+engine = create_async_engine(
+    DATABASE_URL, 
+    echo=True,
+    connect_args={
+        "statement_cache_size": 0,  # Required for pgbouncer transaction mode
+        "prepared_statement_cache_size": 0
+    }
+)
 
 # Session async
 AsyncSessionLocal = sessionmaker(

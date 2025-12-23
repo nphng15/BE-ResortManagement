@@ -6,6 +6,10 @@ from datetime import datetime
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=6, max_length=255)
+    fullname: Optional[str] = Field(None, max_length=100)
+    email: Optional[str] = Field(None, max_length=150)
+    phone_number: Optional[str] = Field(None, max_length=10)
+    id_number: Optional[str] = Field(None, max_length=15)
 
 
 class LoginRequest(BaseModel):

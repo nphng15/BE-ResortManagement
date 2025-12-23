@@ -13,6 +13,10 @@ alembic==1.12.1            # Database migrations for SQLAlchemy
 pydantic==2.4.2            # Data validation library (compatible with FastAPI >=0.103)
 python-dotenv==1.0.0       # Load environment variables from .env
 
+# --- Email & Templating ---
+jinja2>=3.0.0              # Template engine for email templates
+sendgrid>=6.10.0           # SendGrid email service
+
 # --- Authentication & Security ---
 python-jose==3.3.0         # JWT and JOSE implementation
 passlib==1.7.4             # Password hashing utilities

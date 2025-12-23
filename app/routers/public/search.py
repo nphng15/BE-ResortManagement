@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, not_, exists
+from sqlalchemy import select, func, and_, or_
 from datetime import datetime, timedelta
 from typing import Optional
 
-from app.database import get_db
+from app.db_async import get_db
 from app.models.resort import Resort
 from app.models.room_type import RoomType
 from app.models.room import Room
@@ -15,11 +15,12 @@ from app.models.service import Service
 router = APIRouter(prefix="/api/v1", tags=["Search"])
 
 @router.get("/search")
-def search_resorts(
-    checkin: Optional[str] = Query(None),      # Không bắt buộc
-    checkout: Optional[str] = Query(None),     # Không bắt buộc
-    number: Optional[int] = Query(None),       # Không bắt buộc
-    db: AsyncSession = Depends(get_db)          # Tự động cung cấp từ dependency
+async def search_resorts(
+    checkin: Optional[str] = Query(None),
+    checkout: Optional[str] = Query(None),
+    number: Optional[int] = Query(None),
+    name: Optional[str] = Query(None, description="Search resort by name or address"),
+    db: AsyncSession = Depends(get_db)
 ):
     print('here')
     if number is None:
@@ -70,18 +71,28 @@ def search_resorts(
         )
         .join(RoomType, RoomType.resort_id == Resort.id)
         .join(Room, Room.room_type_id == RoomType.id)
-        .where(~Room.id.in_(subq) & (RoomType.people_amount >= number))  # loại bỏ phòng bị trùng lịch
-        .group_by(Resort.id)
+        .where(~Room.id.in_(subq) & (RoomType.people_amount >= number))
     )
 
-    result = db.execute(stmt)
+    # 3️⃣ Filter theo name HOẶC address nếu có
+    if name:
+        stmt = stmt.where(
+            or_(
+                Resort.name.ilike(f"%{name}%"),
+                Resort.address.ilike(f"%{name}%")
+            )
+        )
+
+    stmt = stmt.group_by(Resort.id)
+
+    result = await db.execute(stmt)
     resorts = result.all()
 
-    # 3️⃣ Gắn thêm images và services
+    # 4️⃣ Gắn thêm images và services
     output = []
     for r in resorts:
         # Lấy 4 ảnh đầu
-        img_result = db.execute(
+        img_result = await db.execute(
             select(ResortImage.url)
             .where(ResortImage.resort_id == r.id)
             .limit(4)
@@ -89,7 +100,7 @@ def search_resorts(
         images = [row[0] for row in img_result.all()]
 
         # Lấy danh sách dịch vụ
-        sv_result = db.execute(
+        sv_result = await db.execute(
             select(Service.name).where(Service.resort_id == r.id)
         )
         services = [row[0] for row in sv_result.all()]
