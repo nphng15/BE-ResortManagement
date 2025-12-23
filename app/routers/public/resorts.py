@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
+from sqlalchemy.orm import selectinload
 from datetime import datetime, timedelta
 from typing import Optional
 
 from app.db_async import get_db
 from app.models.account import Account
+from app.models.customer import Customer
 from app.models.feedback import Feedback
 from app.models.resort import Resort
 from app.models.resort_images import ResortImage
@@ -118,6 +120,9 @@ async def get_feedbacks(id: int, db: AsyncSession = Depends(get_db)):
     stmt = (
         select(Feedback)
         .where(Feedback.resort_id == id)
+        .options(
+            selectinload(Feedback.customer).selectinload(Customer.account)
+        )
         .order_by(Feedback.created_at.desc())
     )
     result = await db.execute(stmt)
